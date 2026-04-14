@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
+import os
 import pickle
 import sys
 import unicodedata
@@ -434,13 +435,15 @@ def print_predictions(df: pd.DataFrame) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Tennis win probability predictor")
-    parser.add_argument("--offline",    action="store_true",
+    parser.add_argument("--offline",       action="store_true",
                         help="Use latest cached odds snapshot (no API call)")
-    parser.add_argument("--snapshot",   type=str, default=None,
+    parser.add_argument("--snapshot",      type=str, default=None,
                         help="Path to specific odds snapshot CSV")
-    parser.add_argument("--dry-run",    action="store_true",
+    parser.add_argument("--all-upcoming",  action="store_true",
+                        help="Fetch all upcoming matches (not just tomorrow)")
+    parser.add_argument("--dry-run",       action="store_true",
                         help="Print predictions without writing to disk")
-    parser.add_argument("--bookmakers", nargs="+", default=None,
+    parser.add_argument("--bookmakers",    nargs="+", default=None,
                         help="Bookmaker keys to request (default: all in region)")
 
     # Single-match override
@@ -512,20 +515,25 @@ def main() -> None:
         from utils.odds_fetcher import load_latest_snapshot
         odds_df = load_latest_snapshot()
 
-    else:
+    elif args.all_upcoming:
         from utils.odds_fetcher import OddsClient
-        print("[predict] Fetching live odds...")
-        client = OddsClient()
-        odds_df = client.fetch_tennis_odds(
-            bookmakers = args.bookmakers,
-            save       = True,
-        )
+        print("[predict] Fetching all upcoming matches...")
+        client  = OddsClient(api_key=os.environ.get("ODDS_API_KEY"))
+        odds_df = client.fetch_tennis_odds(bookmakers=args.bookmakers, save=True)
+
+    else:
+        # Default: generate tomorrow's slate and predict on it
+        from utils.slate_generator import get_tomorrow_slate, slate_to_odds_df
+        print("[predict] Generating tomorrow's match slate...")
+        slate   = get_tomorrow_slate(bookmakers=args.bookmakers, save=True)
+        odds_df = slate_to_odds_df(slate) if not slate.empty else slate
 
     if odds_df.empty:
         print("[predict] No odds data — nothing to predict.")
         sys.exit(0)
 
-    print(f"[predict] Running predictions for {odds_df['event_id'].nunique()} matches...")
+    n_events = odds_df["event_id"].nunique() if "event_id" in odds_df.columns else len(odds_df)
+    print(f"[predict] Running predictions for {n_events} matches...")
     results_df = run_predictions(ctx, model, feat_cols, odds_df,
                                  dry_run=args.dry_run)
     print_predictions(results_df)

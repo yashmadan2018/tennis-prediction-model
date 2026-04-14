@@ -1,1 +1,1 @@
-match_id,date,player_a,predicted_prob,opening_implied,closing_implied,clv,result
+date,tournament,surface,player_a,player_b,model_prob_a,opening_implied_a,closing_implied_a,sharp_flag,movement_magnitude,clv_delta,result
