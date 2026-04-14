@@ -255,13 +255,14 @@ def _hand_split_win_rates(
 # ── main function ─────────────────────────────────────────────────────────────
 
 def get_matchup_features(
-    player_a_id:  int,
-    player_b_id:  int,
-    surface:      str,
-    date:         pd.Timestamp,
-    matches:      pd.DataFrame,
-    sr_index:     dict,
-    elo_index:    dict | None = None,
+    player_a_id:      int,
+    player_b_id:      int,
+    surface:          str,
+    date:             pd.Timestamp,
+    matches:          pd.DataFrame,
+    sr_index:         dict,
+    elo_index:        dict | None = None,
+    court_speed_index: float | None = None,
 ) -> dict:
     """
     Return matchup features for player_a vs player_b.
@@ -269,15 +270,19 @@ def get_matchup_features(
     Parameters
     ----------
     player_a_id / player_b_id : numeric Sackmann IDs
-    surface   : 'hard' | 'clay' | 'grass'
-    date      : prediction date (all lookbacks are strictly before this)
-    matches   : processed matches DataFrame (for ace rate + hand lookups)
-    sr_index  : built by build_serve_return_index()
-    elo_index : (unused in current version; reserved for interaction effects)
+    surface          : 'hard' | 'clay' | 'grass'
+    date             : prediction date (all lookbacks are strictly before this)
+    matches          : processed matches DataFrame (for ace rate + hand lookups)
+    sr_index         : built by build_serve_return_index()
+    elo_index        : reserved for future interaction effects
+    court_speed_index: numeric CPI (from utils.court_speed) — used to scale
+                       the rally profile toward shorter/longer points on
+                       faster/slower courts.  None = surface-average assumed.
 
     Returns
     -------
-    dict with rally deltas, style buckets, hand flags, hand-split win rates
+    dict with rally deltas, style buckets, hand flags, hand-split win rates,
+    and court_speed_index
     """
     surface = surface.lower()
 
@@ -292,6 +297,29 @@ def get_matchup_features(
     # ── rally profiles ────────────────────────────────────────────────────────
     rally_a = _estimate_rally_profile(sr_a, ace_a, surface)
     rally_b = _estimate_rally_profile(sr_b, ace_b, surface)
+
+    # ── court speed modulation ─────────────────────────────────────────────
+    # Faster courts (higher CPI) favour short-rally players; slower courts
+    # favour long-rally players.  Modulate scores before computing deltas.
+    # cpi_z: signed distance from surface mean in units of SURFACE_SCALE (20).
+    if court_speed_index is not None:
+        _SURFACE_BASELINE = {"hard": 75.0, "clay": 40.0, "grass": 110.0, "carpet": 80.0}
+        _baseline = _SURFACE_BASELINE.get(surface, 75.0)
+        cpi_z = float(np.clip((court_speed_index - _baseline) / 20.0, -2.0, 2.0))
+        # Fast court → short rallies weighted up, long down
+        _scale_0_4   = 1.0 + 0.15 * cpi_z
+        _scale_9plus = 1.0 - 0.15 * cpi_z
+        _scale_5_8   = 1.0 + 0.05 * cpi_z
+        for _rally, _s04, _s9p, _s58 in (
+            (rally_a, _scale_0_4, _scale_9plus, _scale_5_8),
+            (rally_b, _scale_0_4, _scale_9plus, _scale_5_8),
+        ):
+            if not np.isnan(_rally.get("rally_0_4_score",   np.nan)):
+                _rally["rally_0_4_score"]   *= _s04
+            if not np.isnan(_rally.get("rally_9plus_score", np.nan)):
+                _rally["rally_9plus_score"] *= _s9p
+            if not np.isnan(_rally.get("rally_5_8_score",   np.nan)):
+                _rally["rally_5_8_score"]   *= _s58
 
     # ── style classification ──────────────────────────────────────────────────
     style_a = _classify_style(sr_a, ace_a, surface)
@@ -348,6 +376,9 @@ def get_matchup_features(
     row["a_win_pct_vs_righty"]  = hand_split_a["win_pct_vs_righty"]
     row["b_win_pct_vs_lefty"]   = hand_split_b["win_pct_vs_lefty"]
     row["b_win_pct_vs_righty"]  = hand_split_b["win_pct_vs_righty"]
+
+    # Court speed (raw numeric — useful as standalone feature)
+    row["court_speed_index"] = float(court_speed_index) if court_speed_index is not None else np.nan
 
     return row
 

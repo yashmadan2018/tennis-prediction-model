@@ -41,8 +41,8 @@ from features.form import get_form_features
 from features.h2h import get_h2h_features
 from features.matchup import get_matchup_features
 from features.context import get_context_features
-from features.injury import get_injury_flag
-from features.market import decimal_to_implied, line_movement
+from features.injury import get_injury_features
+from features.market import get_market_features, decimal_to_implied
 
 PROCESSED_DIR = Path(__file__).parent.parent / "data" / "processed"
 
@@ -57,6 +57,7 @@ class PipelineContext:
     elo_index: dict                        # built by build_elo_index()
     sr_index: dict                         # built by build_serve_return_index()
     name_to_id: dict[str, int] = field(default_factory=dict)  # player_name -> player_id
+    court_speed_lookup: dict = field(default_factory=dict)     # (name_lower, year, tour_group) → CPI
 
     @classmethod
     def load(cls, recompute_elo: bool = False) -> "PipelineContext":
@@ -98,9 +99,14 @@ class PipelineContext:
         for row in matches[["loser_name", "loser_id"]].itertuples(index=False):
             name_to_id[row.loser_name] = int(row.loser_id)
 
+        # Court speed index — derived from match data once and cached
+        print("[pipeline] Building court speed index...")
+        from utils.court_speed import build_court_speed_index
+        court_speed_lookup = build_court_speed_index(matches)
+
         print("[pipeline] Context ready.")
         return cls(matches=matches, elo_index=elo_index, sr_index=sr_index,
-                   name_to_id=name_to_id)
+                   name_to_id=name_to_id, court_speed_lookup=court_speed_lookup)
 
 
 
@@ -116,6 +122,7 @@ def build_feature_row(
     best_of: int = 3,
     round_str: str = "R32",
     tourney_level: str = "A",
+    tour: str = "atp",
     opening_odds_a: float | None = None,
     opening_odds_b: float | None = None,
     closing_odds_a: float | None = None,
@@ -139,9 +146,16 @@ def build_feature_row(
     hand_a/b        : 'R' or 'L'
     *_odds_*        : decimal odds (optional — skip market features if None)
     """
+    from utils.court_speed import get_court_speed
+
     matches = ctx.matches
     elo_index = ctx.elo_index
     surface = surface.lower()
+
+    # Resolve numeric court speed for this match — used by Elo lookup and matchup
+    court_speed = get_court_speed(
+        ctx.court_speed_lookup, tournament, match_date, surface, tour
+    ) if ctx.court_speed_lookup else None
 
     row: dict = {
         "player_a": player_a_name, "player_b": player_b_name,
@@ -152,8 +166,8 @@ def build_feature_row(
 
     # ── TIER 1: CORE ──────────────────────────────────────────────────────
 
-    row["elo_a"] = get_elo_at_date(elo_index, player_a_id, surface, match_date)
-    row["elo_b"] = get_elo_at_date(elo_index, player_b_id, surface, match_date)
+    row["elo_a"] = get_elo_at_date(elo_index, player_a_id, surface, match_date, court_speed=court_speed)
+    row["elo_b"] = get_elo_at_date(elo_index, player_b_id, surface, match_date, court_speed=court_speed)
     row["elo_diff"] = row["elo_a"] - row["elo_b"]
 
     sr_a = get_serve_return_features(player_a_id, surface, match_date, ctx.sr_index)
@@ -181,6 +195,7 @@ def build_feature_row(
     matchup = get_matchup_features(
         player_a_id, player_b_id, surface, match_date,
         matches, ctx.sr_index, ctx.elo_index,
+        court_speed_index=court_speed,
     )
     row.update(matchup)
 
@@ -202,27 +217,21 @@ def build_feature_row(
 
     # ── TIER 3: SITUATIONAL OVERLAY ───────────────────────────────────────
 
-    inj_a = get_injury_flag(matches, player_a_name, match_date)
-    inj_b = get_injury_flag(matches, player_b_name, match_date)
-    row["a_injury_flag"] = inj_a["injury_flag"]
-    row["b_injury_flag"] = inj_b["injury_flag"]
-    row["a_injury_signal"] = inj_a["injury_signal"]
-    row["b_injury_signal"] = inj_b["injury_signal"]
+    inj_a = get_injury_features(matches, player_a_id, match_date)
+    inj_b = get_injury_features(matches, player_b_id, match_date)
+    for k, v in inj_a.items():
+        row[f"a_{k}"] = v
+    for k, v in inj_b.items():
+        row[f"b_{k}"] = v
 
     # ── MARKET LAYER (optional) ───────────────────────────────────────────
 
-    if all(v is not None for v in [opening_odds_a, opening_odds_b,
-                                    closing_odds_a, closing_odds_b]):
-        open_impl_a, _ = decimal_to_implied(opening_odds_a, opening_odds_b)
-        close_impl_a, _ = decimal_to_implied(closing_odds_a, closing_odds_b)
-        row["opening_implied_a"] = open_impl_a
-        row["closing_implied_a"] = close_impl_a
-        row.update(line_movement(opening_odds_a, closing_odds_a))
-    else:
-        row["opening_implied_a"] = np.nan
-        row["closing_implied_a"] = np.nan
-        row["line_delta_a"] = np.nan
-        row["line_direction"] = np.nan
-        row["sharp_flag"] = np.nan
+    mkt = get_market_features(
+        opening_odds_a=opening_odds_a,
+        opening_odds_b=opening_odds_b,
+        closing_odds_a=closing_odds_a,
+        closing_odds_b=closing_odds_b,
+    )
+    row.update(mkt)
 
     return row

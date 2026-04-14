@@ -2,8 +2,9 @@
 Surface-specific Elo computation.
 
 Design:
-  - Separate Elo per (player_id, surface). Hard is unified (no court-speed
-    column in Sackmann data; subdivide later if a speed lookup is added).
+  - Separate Elo per (player_id, surface). Hard courts are split into
+    hard_fast (CPI ≥ 70) and hard_slow (CPI < 70) using the Court Pace
+    Index derived in utils/court_speed.py.  Clay and grass are unchanged.
   - K-factor varies by tourney_level to reflect result variance:
       Grand Slam (G)         : K=20  — low variance, prestige inflation
       Masters / PM (M, PM)   : K=28
@@ -18,6 +19,7 @@ Design:
 
 Output schema (one row per player per match):
     match_id, player_id, player_name, surface, elo_before, elo_after, date
+    (surface is 'hard_fast', 'hard_slow', 'clay', 'grass', or 'carpet')
 """
 
 from __future__ import annotations
@@ -88,15 +90,21 @@ def _cross_surface_mean(ratings: dict[str, float]) -> float:
 
 # ── main computation ────────────────────────────────────────────────────────
 
-def compute_surface_elo(matches: pd.DataFrame) -> pd.DataFrame:
+def compute_surface_elo(
+    matches: pd.DataFrame,
+    court_speed_lookup: dict | None = None,
+) -> pd.DataFrame:
     """
     Compute surface-specific Elo for every player across all matches.
 
+    Hard courts are split into hard_fast / hard_slow when court_speed_lookup
+    is provided (built by utils.court_speed.build_court_speed_index).
+    Without it, all hard courts share one Elo bucket (backward-compat mode).
+
     Parameters
     ----------
-    matches : cleaned DataFrame from data_loader (must include:
-              date, surface, tourney_level, match_id,
-              winner_id, winner_name, loser_id, loser_name)
+    matches            : cleaned DataFrame from data_loader
+    court_speed_lookup : dict keyed (tourney_name_lower, year, tour_group) → CPI
 
     Returns
     -------
@@ -104,6 +112,8 @@ def compute_surface_elo(matches: pd.DataFrame) -> pd.DataFrame:
         match_id, player_id, player_name, surface,
         elo_before, elo_after, date
     """
+    from utils.court_speed import elo_surface_for_match, get_court_speed
+
     matches = matches.sort_values(["date", "tourney_id", "match_num"]).reset_index(drop=True)
 
     # Per-player, per-surface state
@@ -113,9 +123,23 @@ def compute_surface_elo(matches: pd.DataFrame) -> pd.DataFrame:
     records: list[dict] = []
 
     for row in tqdm(matches.itertuples(index=False), total=len(matches), desc="Elo"):
-        surface = str(row.surface).lower()
-        if surface not in ("hard", "clay", "grass", "carpet"):
-            surface = "hard"  # catch-all for rare unknowns
+        raw_surface = str(row.surface).lower()
+        if raw_surface not in ("hard", "clay", "grass", "carpet"):
+            raw_surface = "hard"
+
+        # Optionally split hard into hard_fast / hard_slow
+        if court_speed_lookup is not None and raw_surface == "hard":
+            tour = str(getattr(row, "tour", "atp")).lower()
+            cpi  = get_court_speed(
+                court_speed_lookup,
+                str(getattr(row, "tourney_name", "")),
+                row.date,
+                raw_surface,
+                tour,
+            )
+            surface = elo_surface_for_match(raw_surface, cpi)
+        else:
+            surface = raw_surface
 
         k = K_BY_LEVEL.get(str(row.tourney_level), DEFAULT_K)
         mid = row.match_id
@@ -184,19 +208,45 @@ def get_elo_at_date(
     player_id: int,
     surface: str,
     date: pd.Timestamp,
+    court_speed: float | None = None,
 ) -> float:
     """
     Return the elo_after value for player_id on surface from the last match
-    strictly before `date`. Falls back to DEFAULT_ELO if no history exists.
+    strictly before `date`.
+
+    Hard-court CPI split
+    --------------------
+    When `court_speed` is provided and surface == "hard", look up the
+    appropriate hard_fast / hard_slow bucket.  Fallback chain:
+      1. hard_fast or hard_slow (whichever applies given CPI)
+      2. The other hard bucket (cross-speed bleed is real — most players
+         move between fast and slow hard)
+      3. DEFAULT_ELO
+
+    Non-hard surfaces (clay, grass, carpet) are unaffected.
     """
-    key = (int(player_id), surface.lower())
-    if key not in index:
-        return DEFAULT_ELO
-    grp = index[key]
-    prior = grp[grp["date"] < date]
-    if prior.empty:
-        return DEFAULT_ELO
-    return float(prior.iloc[-1]["elo_after"])
+    from utils.court_speed import elo_surface_for_match, HARD_FAST_THRESHOLD
+
+    pid = int(player_id)
+    surf = surface.lower()
+
+    if surf == "hard" and court_speed is not None:
+        primary   = elo_surface_for_match("hard", court_speed)          # hard_fast or hard_slow
+        secondary = "hard_slow" if primary == "hard_fast" else "hard_fast"
+        fallbacks = [primary, secondary, "hard"]
+    else:
+        fallbacks = [surf]
+
+    for key_surf in fallbacks:
+        key = (pid, key_surf)
+        if key not in index:
+            continue
+        grp   = index[key]
+        prior = grp[grp["date"] < date]
+        if not prior.empty:
+            return float(prior.iloc[-1]["elo_after"])
+
+    return DEFAULT_ELO
 
 
 # ── save / load ─────────────────────────────────────────────────────────────

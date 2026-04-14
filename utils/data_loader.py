@@ -137,12 +137,13 @@ def load_matches(
     pd.DataFrame with all matches merged and cleaned
     """
     if tours is None:
-        tours = ["atp", "challenger", "wta"]
+        tours = ["atp", "challenger", "wta", "wta125"]
 
     patterns = {
-        "atp": "atp_matches_[0-9][0-9][0-9][0-9].csv",
-        "challenger": "atp_matches_qual_chall_[0-9][0-9][0-9][0-9].csv",
-        "wta": "wta_matches_[0-9][0-9][0-9][0-9].csv",
+        "atp":        "atp_matches_[0-9][0-9][0-9][0-9].csv",
+        "challenger":  "atp_matches_qual_chall_[0-9][0-9][0-9][0-9].csv",
+        "wta":        "wta_matches_[0-9][0-9][0-9][0-9].csv",
+        "wta125":     "wta_matches_qual_itf_[0-9][0-9][0-9][0-9].csv",
     }
 
     frames = []
