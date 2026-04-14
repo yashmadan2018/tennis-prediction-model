@@ -50,6 +50,8 @@ PREDICTIONS_CSV = ROOT / "output" / "predictions.csv"
 CLV_CSV         = ROOT / "output" / "clv_tracker.csv"
 MODEL_PKL       = ROOT / "models" / "saved" / "xgb_calibrated.pkl"
 FEATURE_JSON    = ROOT / "models" / "saved" / "feature_list.json"
+LR_PKL          = ROOT / "models" / "saved" / "lr_calibrated.pkl"
+MLP_PKL         = ROOT / "models" / "saved" / "mlp_calibrated.pkl"
 
 (ROOT / "output").mkdir(exist_ok=True)
 
@@ -117,12 +119,35 @@ def resolve_player_id(
 # ── model loader ───────────────────────────────────────────────────────────────
 
 def load_model() -> tuple:
-    """Returns (model, feat_cols)."""
-    with open(MODEL_PKL, "rb") as f:
-        artefact = pickle.load(f)
+    """
+    Returns (model, feat_cols, meta, ci).
+
+    If all three ensemble models exist (xgb + lr + mlp), loads an EnsembleModel
+    that applies tour-specific weights.  Falls back to XGBoost-only when LR/MLP
+    have not yet been trained.
+
+    BootstrapCI is precomputed once on the 2022-2023 val set — all subsequent
+    ci.compute() calls are pure numpy (~5 ms each).
+    """
+    from models.confidence import BootstrapCI
+
     with open(FEATURE_JSON) as f:
         meta = json.load(f)
-    return artefact["model"], artefact["feature_cols"], meta
+
+    if LR_PKL.exists() and MLP_PKL.exists():
+        from models.ensemble import EnsembleModel
+        model     = EnsembleModel.load()
+        feat_cols = model.feat_cols
+        print("[predict] Ensemble model loaded (XGB + LR + MLP)")
+    else:
+        with open(MODEL_PKL, "rb") as f:
+            artefact = pickle.load(f)
+        model     = artefact["model"]
+        feat_cols = artefact["feature_cols"]
+        print("[predict] XGBoost-only model loaded (run models/ensemble.py to enable ensemble)")
+
+    ci = BootstrapCI(model, feat_cols)
+    return model, feat_cols, meta, ci
 
 
 # ── single-match prediction ────────────────────────────────────────────────────
@@ -146,6 +171,7 @@ def predict_match(
     opening_odds_b: float | None = None,
     closing_odds_a: float | None = None,
     closing_odds_b: float | None = None,
+    ci=None,   # BootstrapCI instance (optional — skipped if None)
 ) -> dict:
     """
     Build features and run inference for a single match.
@@ -183,8 +209,18 @@ def predict_match(
             X[c] = np.nan
     X = X[feat_cols]
 
-    prob_a = float(model.predict_proba(X)[0, 1])
+    # Use tour-weighted ensemble probability when available
+    from models.ensemble import EnsembleModel
+    if isinstance(model, EnsembleModel):
+        prob_a = float(model.predict_proba(X, tour=tour, tourney_level=tourney_level)[0, 1])
+    else:
+        prob_a = float(model.predict_proba(X)[0, 1])
     prob_b = 1.0 - prob_a
+
+    # ── confidence interval ───────────────────────────────────────────────────
+    ci_result: dict = {}
+    if ci is not None:
+        ci_result = ci.compute(X.values[0], prob_a=prob_a)
 
     # Market edge: model prob − implied prob (from closing if available, else opening)
     edge_a = np.nan
@@ -201,23 +237,27 @@ def predict_match(
     drivers = _key_drivers(feat_row)
 
     return {
-        "player_a":      player_a_name,
-        "player_b":      player_b_name,
-        "player_a_id":   player_a_id,
-        "player_b_id":   player_b_id,
-        "surface":       surface,
-        "tournament":    tournament,
-        "date":          str(match_date.date()),
-        "prob_a":        round(prob_a, 4),
-        "prob_b":        round(prob_b, 4),
-        "confidence":    _confidence_label(prob_a),
-        "model_edge":    round(float(edge_a), 4) if not np.isnan(edge_a) else None,
-        "opening_odds_a": opening_odds_a,
-        "opening_odds_b": opening_odds_b,
-        "closing_odds_a": closing_odds_a,
-        "closing_odds_b": closing_odds_b,
-        "key_drivers":   drivers,
-        "feat_row":      feat_row,   # kept for CLV logging, stripped before CSV write
+        "player_a":          player_a_name,
+        "player_b":          player_b_name,
+        "player_a_id":       player_a_id,
+        "player_b_id":       player_b_id,
+        "surface":           surface,
+        "tournament":        tournament,
+        "date":              str(match_date.date()),
+        "prob_a":            round(prob_a, 4),
+        "prob_b":            round(prob_b, 4),
+        "prob_low":          ci_result.get("prob_low"),
+        "prob_high":         ci_result.get("prob_high"),
+        "confidence_width":  ci_result.get("confidence_width"),
+        "confidence_tier":   ci_result.get("confidence_tier"),
+        "confidence":        _confidence_label(prob_a),
+        "model_edge":        round(float(edge_a), 4) if not np.isnan(edge_a) else None,
+        "opening_odds_a":    opening_odds_a,
+        "opening_odds_b":    opening_odds_b,
+        "closing_odds_a":    closing_odds_a,
+        "closing_odds_b":    closing_odds_b,
+        "key_drivers":       drivers,
+        "feat_row":          feat_row,   # kept for CLV logging, stripped before CSV write
     }
 
 
@@ -262,6 +302,7 @@ def run_predictions(
     feat_cols: list[str],
     odds_df: pd.DataFrame,
     dry_run: bool = False,
+    ci=None,
 ) -> pd.DataFrame:
     """
     Run predictions for all matches in odds_df.
@@ -273,6 +314,7 @@ def run_predictions(
     feat_cols : feature column list from feature_list.json
     odds_df   : output of OddsClient.fetch_tennis_odds() (best-bookmaker rows)
     dry_run   : if True, don't write to disk
+    ci        : BootstrapCI instance for confidence intervals (optional)
 
     Returns
     -------
@@ -318,6 +360,7 @@ def run_predictions(
                 tour           = str(ev.get("tour", "atp")),
                 opening_odds_a = float(ev["odds_a"]),
                 opening_odds_b = float(ev["odds_b"]),
+                ci             = ci,
             )
             results.append(result)
         except Exception as exc:
@@ -349,7 +392,9 @@ def _log_predictions(df: pd.DataFrame) -> None:
     cols = [
         "date", "tournament", "surface",
         "player_a", "player_b",
-        "prob_a", "prob_b", "confidence", "model_edge",
+        "prob_a", "prob_b",
+        "prob_low", "prob_high", "confidence_width", "confidence_tier",
+        "confidence", "model_edge",
         "opening_odds_a", "opening_odds_b",
         "closing_odds_a", "closing_odds_b",
         "key_drivers",
@@ -399,35 +444,73 @@ def _log_clv(results: list[dict]) -> None:
 
 def print_predictions(df: pd.DataFrame) -> None:
     """Pretty-print prediction results to stdout."""
+    from models.confidence import format_ci, TIER_SHARP, TIER_MODERATE
+
     if df.empty:
         return
+
+    has_ci = "prob_low" in df.columns and df["prob_low"].notna().any()
 
     print(f"\n{'='*72}")
     print(f"  TENNIS PREDICTIONS  —  {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print(f"{'='*72}")
 
-    for _, row in df.sort_values("prob_a", ascending=False).iterrows():
-        edge_str = f"  edge {row['model_edge']:+.3f}" if pd.notna(row.get("model_edge")) else ""
+    # Sort by confidence tier (SHARP first) then by confidence width ascending
+    display = df.copy()
+    if has_ci:
+        tier_order = {"SHARP": 0, "MODERATE": 1, "WIDE": 2}
+        display["_tier_ord"] = display["confidence_tier"].map(tier_order).fillna(3)
+        display["_width"]    = pd.to_numeric(display.get("confidence_width"), errors="coerce")
+        display = display.sort_values(["_tier_ord", "_width"]).drop(
+            columns=["_tier_ord", "_width"]
+        )
+
+    for _, row in display.iterrows():
+        prob_a = float(row["prob_a"])
+        prob_b = float(row["prob_b"])
+
+        # Probability lines
+        if has_ci and pd.notna(row.get("prob_low")):
+            pl  = float(row["prob_low"])
+            ph  = float(row["prob_high"])
+            tier = str(row.get("confidence_tier", ""))
+            # CI is for player A; invert for player B
+            line_a = format_ci(row["player_a"], prob_a, pl,       ph,       tier)
+            line_b = format_ci(row["player_b"], prob_b, 1.0 - ph, 1.0 - pl, tier)
+        else:
+            line_a = f"{row['player_a']} {prob_a:.1%}"
+            line_b = f"{row['player_b']} {prob_b:.1%}"
+
+        edge_str = ""
+        if pd.notna(row.get("model_edge")):
+            edge_str = f"  edge {row['model_edge']:+.3f}"
+
         odds_str = ""
         if pd.notna(row.get("opening_odds_a")):
             odds_str = f"  [{row['opening_odds_a']:.2f} / {row['opening_odds_b']:.2f}]"
 
-        print(f"\n  {row['tournament']} ({row['surface'].upper()})")
-        print(f"  {row['player_a']} vs {row['player_b']}")
-        print(f"  P(A wins): {row['prob_a']:.1%}   P(B wins): {row['prob_b']:.1%}"
-              f"   conf={row['confidence']}{edge_str}{odds_str}")
+        print(f"\n  {row['tournament']} ({str(row['surface']).upper()})")
+        print(f"  {line_a}")
+        print(f"  {line_b}")
+        if edge_str or odds_str:
+            print(f"  {(edge_str + odds_str).strip()}")
         print(f"  Drivers: {row.get('key_drivers', '')}")
 
+    # ── summary footer ────────────────────────────────────────────────────────
     print(f"\n{'='*72}")
-    print(f"  {len(df)} matches  |  "
-          f"High conf: {(df['confidence']=='high').sum()}  |  "
-          f"Medium: {(df['confidence']=='medium').sum()}  |  "
-          f"Low: {(df['confidence']=='low').sum()}")
+    print(f"  {len(df)} matches", end="")
+    if has_ci and "confidence_tier" in df.columns:
+        sharp    = (df["confidence_tier"] == TIER_SHARP).sum()
+        moderate = (df["confidence_tier"] == TIER_MODERATE).sum()
+        wide     = (df["confidence_tier"] == df["confidence_tier"].map(
+                        lambda x: x if x == "WIDE" else "")).sum()
+        wide     = (df["confidence_tier"] == "WIDE").sum()
+        print(f"  |  SHARP: {sharp}  MODERATE: {moderate}  WIDE: {wide}", end="")
+    print()
     if "model_edge" in df.columns:
-        edges = df["model_edge"].dropna()
+        edges = pd.to_numeric(df["model_edge"], errors="coerce").dropna()
         if not edges.empty:
-            pos_edge = (edges > 0.03).sum()
-            print(f"  Positive edge (>3pp): {pos_edge} matches")
+            print(f"  Positive edge (>3pp): {(edges > 0.03).sum()} matches")
     print(f"{'='*72}\n")
 
 
@@ -461,7 +544,7 @@ def main() -> None:
     args = parser.parse_args()
 
     print("[predict] Loading model...")
-    model, feat_cols, meta = load_model()
+    model, feat_cols, meta, ci = load_model()
 
     print("[predict] Loading pipeline context...")
     from features.pipeline import PipelineContext
@@ -496,6 +579,7 @@ def main() -> None:
             tour          = args.tour,
             opening_odds_a = args.odds_a,
             opening_odds_b = args.odds_b,
+            ci             = ci,
         )
 
         df = pd.DataFrame([{k: v for k, v in result.items() if k != "feat_row"}])
@@ -535,7 +619,7 @@ def main() -> None:
     n_events = odds_df["event_id"].nunique() if "event_id" in odds_df.columns else len(odds_df)
     print(f"[predict] Running predictions for {n_events} matches...")
     results_df = run_predictions(ctx, model, feat_cols, odds_df,
-                                 dry_run=args.dry_run)
+                                 dry_run=args.dry_run, ci=ci)
     print_predictions(results_df)
 
 

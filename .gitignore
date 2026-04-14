@@ -3,8 +3,12 @@ data/raw/
 data/processed/
 data/odds/
 
-# Model artefacts
-models/saved/
+# Model artefacts — pkl files are small enough to commit; exclude large training artifacts only
+models/saved/*.cb
+models/saved/*.bin
+
+# Streamlit secrets (real file) — use .streamlit/secrets.toml.example as template
+.streamlit/secrets.toml
 
 # Python
 __pycache__/
