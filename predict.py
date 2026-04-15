@@ -46,6 +46,15 @@ import pandas as pd
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
 
+# Load .env early so ODDS_API_KEY and Twilio vars are available to all submodules
+_env_path = ROOT / ".env"
+if _env_path.exists():
+    for _line in _env_path.read_text().splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _, _v = _line.partition("=")
+            os.environ.setdefault(_k.strip(), _v.strip())
+
 PREDICTIONS_CSV = ROOT / "output" / "predictions.csv"
 CLV_CSV         = ROOT / "output" / "clv_tracker.csv"
 MODEL_PKL       = ROOT / "models" / "saved" / "xgb_calibrated.pkl"
