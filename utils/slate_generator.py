@@ -99,10 +99,14 @@ def _infer_round(tourney_level: str, day_of_tournament: int | None) -> str:
 
 # ── slate builder ──────────────────────────────────────────────────────────────
 
-def _build_slate(odds_df: pd.DataFrame, target_date: date) -> pd.DataFrame:
+def _build_slate(odds_df: pd.DataFrame, target_date: date | None) -> pd.DataFrame:
     """
-    Filter odds_df to matches commencing on target_date (UTC) and
-    format as a clean slate DataFrame.
+    Filter odds_df to matches commencing on target_date (local system time)
+    and format as a clean slate DataFrame.
+
+    Dates are compared in the local system timezone so that matches near
+    midnight UTC are bucketed correctly for the user's locale.
+    Pass target_date=None to skip date filtering (return all rows).
     """
     if odds_df.empty:
         return pd.DataFrame(columns=SLATE_COLS)
@@ -111,9 +115,15 @@ def _build_slate(odds_df: pd.DataFrame, target_date: date) -> pd.DataFrame:
     if not pd.api.types.is_datetime64_any_dtype(df["commence_time"]):
         df["commence_time"] = pd.to_datetime(df["commence_time"], utc=True, errors="coerce")
 
-    df["commence_date"] = df["commence_time"].dt.tz_convert("UTC").dt.date
+    # Convert to local system time before extracting the date
+    import datetime as _dt
+    local_tz = _dt.datetime.now(_dt.timezone.utc).astimezone().tzinfo
+    df["commence_date"] = df["commence_time"].dt.tz_convert(local_tz).dt.date
 
-    slate = df[df["commence_date"] == target_date].copy()
+    if target_date is not None:
+        slate = df[df["commence_date"] == target_date].copy()
+    else:
+        slate = df.copy()
     if slate.empty:
         return pd.DataFrame(columns=SLATE_COLS)
 
@@ -166,7 +176,7 @@ def get_slate(
     from utils.odds_fetcher import OddsClient, best_bookmaker_row
 
     if target_date is None:
-        target_date = date.today() + timedelta(days=1)
+        target_date = date.today()   # default: today (local date)
     elif isinstance(target_date, str):
         target_date = date.fromisoformat(target_date)
 

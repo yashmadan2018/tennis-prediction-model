@@ -557,7 +557,9 @@ def main() -> None:
     parser.add_argument("--snapshot",      type=str, default=None,
                         help="Path to specific odds snapshot CSV")
     parser.add_argument("--all-upcoming",  action="store_true",
-                        help="Fetch all upcoming matches (not just tomorrow)")
+                        help="Fetch all upcoming matches (no date filter)")
+    parser.add_argument("--tomorrow",      action="store_true",
+                        help="Predict on tomorrow's slate instead of today's")
     parser.add_argument("--dry-run",       action="store_true",
                         help="Print predictions without writing to disk or sending alerts")
     parser.add_argument("--no-alerts",     action="store_true",
@@ -646,10 +648,12 @@ def main() -> None:
         odds_df = client.fetch_tennis_odds(bookmakers=args.bookmakers, save=True)
 
     else:
-        # Default: generate tomorrow's slate and predict on it
-        from utils.slate_generator import get_tomorrow_slate, slate_to_odds_df
-        print("[predict] Generating tomorrow's match slate...")
-        slate   = get_tomorrow_slate(bookmakers=args.bookmakers, save=True)
+        # Default: today's slate (local date); --tomorrow shifts to next day
+        from datetime import date, timedelta
+        from utils.slate_generator import get_slate, slate_to_odds_df
+        target = date.today() + timedelta(days=1) if args.tomorrow else date.today()
+        print(f"[predict] Generating slate for {target.isoformat()} (local date)...")
+        slate   = get_slate(target_date=target, bookmakers=args.bookmakers, save=True)
         odds_df = slate_to_odds_df(slate) if not slate.empty else slate
 
     if odds_df.empty:
