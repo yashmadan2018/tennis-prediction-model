@@ -391,12 +391,36 @@ def best_bookmaker_row(df: pd.DataFrame) -> pd.DataFrame:
     For each event_id keep a single row — the best available bookmaker
     in PREFERRED_BOOKS order (Pinnacle first).  Events not covered by
     any preferred book are kept with whichever bookmaker was returned.
+
+    Betfair/exchange rows with an implausibly high overround (>108%) are
+    dropped before selection: exchange back prices on each side can be
+    unmatched or stale and don't form a coherent two-way market, inflating
+    the apparent edge.
     """
     if df.empty:
         return df
 
-    book_rank = {b: i for i, b in enumerate(PREFERRED_BOOKS)}
     df = df.copy()
+
+    # Flag rows whose two-way overround is implausible (>1.08 on an exchange
+    # suggests unmatched quotes rather than a real market).
+    if "odds_a" in df.columns and "odds_b" in df.columns:
+        overround = (1 / df["odds_a"].replace(0, float("nan"))) + \
+                    (1 / df["odds_b"].replace(0, float("nan")))
+        is_exchange = df["bookmaker"].str.contains("betfair_ex|matchbook|smarkets",
+                                                   case=False, na=False)
+        bad_exchange = is_exchange & (overround > 1.08)
+        n_dropped = bad_exchange.sum()
+        if n_dropped:
+            print(f"[odds] Dropped {n_dropped} exchange row(s) with overround >1.08 "
+                  f"(unmatched quotes): "
+                  f"{df.loc[bad_exchange, 'bookmaker'].unique().tolist()}")
+        df = df[~bad_exchange]
+
+    if df.empty:
+        return df
+
+    book_rank = {b: i for i, b in enumerate(PREFERRED_BOOKS)}
     df["_brank"] = df["bookmaker"].map(book_rank).fillna(len(PREFERRED_BOOKS))
     df = (
         df.sort_values("_brank")
