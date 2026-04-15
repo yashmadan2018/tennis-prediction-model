@@ -514,6 +514,17 @@ def print_predictions(df: pd.DataFrame) -> None:
     print(f"{'='*72}\n")
 
 
+# ── alert integration ──────────────────────────────────────────────────────────
+
+def _run_alerts(dry_run: bool = False) -> None:
+    """Call alert_runner after predictions are written. Silently skips on import error."""
+    try:
+        from utils.alert_runner import run_alerts
+        run_alerts(dry_run=dry_run)
+    except Exception as exc:
+        print(f"[alerts] Could not run alerts: {exc}")
+
+
 # ── main ───────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -525,7 +536,9 @@ def main() -> None:
     parser.add_argument("--all-upcoming",  action="store_true",
                         help="Fetch all upcoming matches (not just tomorrow)")
     parser.add_argument("--dry-run",       action="store_true",
-                        help="Print predictions without writing to disk")
+                        help="Print predictions without writing to disk or sending alerts")
+    parser.add_argument("--no-alerts",     action="store_true",
+                        help="Skip SMS alerts even on a live run")
     parser.add_argument("--bookmakers",    nargs="+", default=None,
                         help="Bookmaker keys to request (default: all in region)")
 
@@ -588,6 +601,10 @@ def main() -> None:
         if not args.dry_run:
             _log_predictions(df)
             _log_clv([result])
+            if not args.no_alerts:
+                _run_alerts(dry_run=False)
+        elif not args.no_alerts:
+            _run_alerts(dry_run=True)
         return
 
     # ── batch mode from odds feed ──────────────────────────────────────────────
@@ -621,6 +638,9 @@ def main() -> None:
     results_df = run_predictions(ctx, model, feat_cols, odds_df,
                                  dry_run=args.dry_run, ci=ci)
     print_predictions(results_df)
+
+    if not args.no_alerts:
+        _run_alerts(dry_run=args.dry_run)
 
 
 if __name__ == "__main__":
