@@ -1,0 +1,15 @@
+match_id,event_id,player_a,player_b,surface,tournament,tour,round,best_of,tourney_level,commence_time,opening_odds_a,opening_odds_b,bookmaker
+atp_b7eb620c5c,b7eb620c5cf8f8eeae8f9c668f413da2,Alex De Minaur,Hamad Medjedovic,clay,ATP Barcelona Open,atp,Unknown,3,A,2026-04-15 10:30:00+00:00,1.43,3.05,pinnacle
+atp_ea2ff9c72f,ea2ff9c72f9c80edbc1f9c96cfaf4d78,Cameron Norrie,Ethan Quinn,clay,ATP Barcelona Open,atp,Unknown,3,A,2026-04-15 15:30:00+00:00,1.58,2.52,pinnacle
+atp_733e22ee26,733e22ee266daf80e2b45edd6e047e97,Arthur Rinderknech,Joao Fonseca,clay,ATP Munich,atp,Unknown,3,A,2026-04-15 09:05:00+00:00,3.61,1.32,pinnacle
+wta_a9b5b94bcd,a9b5b94bcd813fd3e55c07e7f75774a6,Jelena Ostapenko,Mirra Andreeva,hard,WTA Stuttgart Open,wta,Unknown,3,I,2026-04-15 15:00:00+00:00,3.18,1.4,pinnacle
+atp_cf7fcc5563,cf7fcc5563845a842645c1adfb514cd0,Rafael Jodar,Camilo Ugo Carabelli,clay,ATP Barcelona Open,atp,Unknown,3,A,2026-04-15 14:00:00+00:00,1.28,4.05,pinnacle
+atp_fa0480dd45,fa0480dd4585d5c1847786f1ff05dc16,Vit Kopriva,Luciano Darderi,clay,ATP Munich,atp,Unknown,3,A,2026-04-15 14:00:00+00:00,3.21,1.38,pinnacle
+wta_8698196eeb,8698196eebf317c0f0e4548025bf823d,Shuai Zhang,Linda Noskova,hard,WTA Stuttgart Open,wta,Unknown,3,I,2026-04-15 13:00:00+00:00,6.14,1.16,pinnacle
+wta_280580ec95,280580ec95222b885bd62a3a34640ec6,Zeynep Sonmez,Jasmine Paolini,hard,WTA Stuttgart Open,wta,Unknown,3,I,2026-04-15 10:30:00+00:00,4.05,1.28,pinnacle
+atp_9be190a557,9be190a557ab85929ca0ec98d833d19b,Nuno Borges,Tomas Martin Etcheverry,clay,ATP Barcelona Open,atp,Unknown,3,A,2026-04-15 09:00:00+00:00,3.3,1.38,pinnacle
+wta_2ddf1b8515,2ddf1b8515e37587285a8ca4e0607bd4,Iga Swiatek,Laura Siegemund,hard,WTA Stuttgart Open,wta,Unknown,3,I,2026-04-15 16:30:00+00:00,1.04,17.98,pinnacle
+wta_c017a5a397,c017a5a3972164f1821eaabc64ebaa8e,Alycia Parks,Noma Noha Akugue,hard,WTA Stuttgart Open,wta,Unknown,3,I,2026-04-15 12:00:00+00:00,1.52,2.7,pinnacle
+atp_adcfd324c4,adcfd324c4da1a0bce5219ae61be0027,Alexander Blockx,Ben Shelton,clay,ATP Munich,atp,Unknown,3,A,2026-04-15 11:00:00+00:00,2.18,1.74,pinnacle
+atp_d3ff3215e3,d3ff3215e3f02d98a4d115b1114631d6,Flavio Cobolli,Zizou Bergs,clay,ATP Munich,atp,Unknown,3,A,2026-04-15 12:30:00+00:00,1.68,2.29,pinnacle
+wta_22546ffb69,22546ffb6957d5188e27181085c92d60,Eva Lys,Elina Svitolina,hard,WTA Stuttgart Open,wta,Unknown,3,I,2026-04-15 18:00:00+00:00,4.5,1.17,williamhill
