@@ -13,3 +13,17 @@ date,tournament,surface,player_a,player_b,prob_a,prob_b,prob_low,prob_high,confi
 2026-04-15,ATP Barcelona Open,clay,Rafael Jodar,Camilo Ugo Carabelli,0.2017,0.7983,0.0,0.4517,0.4517,WIDE,high,-0.5563,1.28,4.01,,,Elo -375 | form -0.78
 2026-04-15,WTA Stuttgart Open,hard,Zeynep Sonmez,Jasmine Paolini,0.3919,0.6081,0.1419,0.6419,0.5,WIDE,low,0.1517,4.05,1.28,,,Elo -179 | form +0.14 | hold -0.06
 2026-04-15,WTA Stuttgart Open,hard,Eva Lys,Elina Svitolina,0.3454,0.6546,0.0954,0.5954,0.5,WIDE,medium,0.139,4.5,1.17,,,Elo -136 | hold -0.14
+2026-04-15,ATP Barcelona Open,clay,Alex De Minaur,Hamad Medjedovic,0.5781,0.4219,0.3281,0.8281,0.5,WIDE,low,-0.1027,1.43,3.05,,,Elo ++79 | form -0.27
+2026-04-15,ATP Barcelona Open,clay,Cameron Norrie,Ethan Quinn,0.7887,0.2113,0.5387,1.0,0.4613,WIDE,high,0.174,1.58,2.52,,,Elo ++460 | form -0.14 | hold +0.08
+2026-04-15,ATP Munich,clay,Arthur Rinderknech,Joao Fonseca,0.5727,0.4273,0.3227,0.8227,0.5,WIDE,low,0.305,3.61,1.32,,,Elo ++74 | form -0.36 | hold +0.10
+2026-04-15,WTA Stuttgart Open,hard,Jelena Ostapenko,Mirra Andreeva,0.4722,0.5278,0.2222,0.7222,0.5,WIDE,low,0.1665,3.18,1.4,,,form -0.26
+2026-04-15,ATP Barcelona Open,clay,Rafael Jodar,Camilo Ugo Carabelli,0.2017,0.7983,0.0,0.4517,0.4517,WIDE,high,-0.5582,1.28,4.05,,,Elo -375 | form -0.78
+2026-04-15,ATP Munich,clay,Vit Kopriva,Luciano Darderi,0.4281,0.5719,0.1781,0.6781,0.5,WIDE,low,0.1274,3.21,1.38,,,Elo -139 | form +0.53 | hold -0.08
+2026-04-15,WTA Stuttgart Open,hard,Shuai Zhang,Linda Noskova,0.2814,0.7186,0.0314,0.5314,0.5,WIDE,medium,0.1225,6.14,1.16,,,Elo -228 | form -0.21 | hold -0.17
+2026-04-15,WTA Stuttgart Open,hard,Zeynep Sonmez,Jasmine Paolini,0.3919,0.6081,0.1419,0.6419,0.5,WIDE,low,0.1517,4.05,1.28,,,Elo -179 | form +0.14 | hold -0.06
+2026-04-15,ATP Barcelona Open,clay,Nuno Borges,Tomas Martin Etcheverry,0.4889,0.5111,0.3384,0.6394,0.301,WIDE,low,0.194,3.3,1.38,,,balanced
+2026-04-15,WTA Stuttgart Open,hard,Iga Swiatek,Laura Siegemund,0.8393,0.1607,0.5893,1.0,0.4107,WIDE,high,-0.1061,1.04,17.98,,,Elo ++432 | form +0.30 | hold +0.17
+2026-04-15,WTA Stuttgart Open,hard,Alycia Parks,Noma Noha Akugue,0.5957,0.4043,0.3457,0.8457,0.5,WIDE,low,-0.0441,1.52,2.7,,,form -0.26
+2026-04-15,ATP Munich,clay,Alexander Blockx,Ben Shelton,0.3633,0.6367,0.1133,0.6133,0.5,WIDE,low,-0.0806,2.18,1.74,,,Elo -106 | hold -0.09
+2026-04-15,ATP Munich,clay,Flavio Cobolli,Zizou Bergs,0.4848,0.5152,0.2348,0.7348,0.5,WIDE,low,-0.092,1.68,2.29,,,balanced
+2026-04-15,WTA Stuttgart Open,hard,Eva Lys,Elina Svitolina,0.3454,0.6546,0.0954,0.5954,0.5,WIDE,medium,0.139,4.5,1.17,,,Elo -136 | hold -0.14
