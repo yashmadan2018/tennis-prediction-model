@@ -1,1 +1,11 @@
 date,tournament,surface,player_a,player_b,model_prob_a,opening_implied_a,closing_implied_a,sharp_flag,movement_magnitude,clv_delta,result
+2026-04-16,ATP Munich,clay,Botic Van De Zandschulp,Francisco Cerundolo,0.4017,0.2934,,,,,
+2026-04-16,ATP Munich,clay,Alexander Zverev,Gabriel Diallo,0.8409,0.8912,,,,,
+2026-04-16,ATP Munich,clay,Daniel Altmaier,Alex Molcan,0.6742,0.5194,,,,,
+2026-04-16,WTA Stuttgart Open,hard,Liudmila Samsonova,Coco Gauff,0.1625,0.1674,,,,,
+2026-04-16,WTA Stuttgart Open,hard,Karolina Muchova,Elise Mertens,0.889,0.5969,,,,,
+2026-04-16,ATP Barcelona Open,clay,Carlos Alcaraz,Tomas Machac,0.7298,0.8608,,,,,
+2026-04-16,ATP Barcelona Open,clay,Corentin Moutet,Lorenzo Musetti,0.3759,0.2621,,,,,
+2026-04-16,ATP Barcelona Open,clay,Lorenzo Sonego,Andrey Rublev,0.385,0.2686,,,,,
+2026-04-16,WTA Stuttgart Open,hard,Elena Rybakina,Diana Shnaider,0.6351,0.7741,,,,,
+2026-04-16,ATP Barcelona Open,clay,Arthur Fils,Brandon Nakashima,0.5927,0.7039,,,,,

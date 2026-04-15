@@ -1,1 +1,11 @@
 match_id,date,tournament,surface,player_a,player_b,prob_a,prob_b,key_drivers,confidence,model_edge,closing_odds_a,closing_odds_b
+2026-04-16,ATP Munich,clay,Botic Van De Zandschulp,Francisco Cerundolo,0.4017,0.5983,0.1889,0.6145,0.4256,WIDE,low,0.1084,3.3,1.37,,,Elo -144
+2026-04-16,ATP Munich,clay,Alexander Zverev,Gabriel Diallo,0.8409,0.1591,0.5909,1.0,0.4091,WIDE,high,-0.0503,1.09,8.93,,,Elo ++468 | form +0.16 | hold +0.15
+2026-04-16,ATP Munich,clay,Daniel Altmaier,Alex Molcan,0.6742,0.3258,0.4242,0.9242,0.5,WIDE,medium,0.1548,1.86,2.01,,,Elo ++84 | form +0.17 | hold +0.13
+2026-04-16,WTA Stuttgart Open,hard,Liudmila Samsonova,Coco Gauff,0.1625,0.8375,0.0,0.4125,0.4125,WIDE,high,-0.0049,5.82,1.17,,,Elo -263 | form -0.33
+2026-04-16,WTA Stuttgart Open,hard,Karolina Muchova,Elise Mertens,0.889,0.111,0.639,1.0,0.361,WIDE,high,0.2922,1.54,2.28,,,Elo ++258 | form +0.34 | hold +0.12
+2026-04-16,ATP Barcelona Open,clay,Carlos Alcaraz,Tomas Machac,0.7298,0.2702,0.4798,0.9798,0.5,WIDE,medium,-0.131,1.1,6.8,,,Elo ++342 | hold +0.10
+2026-04-16,ATP Barcelona Open,clay,Corentin Moutet,Lorenzo Musetti,0.3759,0.6241,0.1259,0.6259,0.5,WIDE,low,0.1138,3.35,1.19,,,Elo -195
+2026-04-16,ATP Barcelona Open,clay,Lorenzo Sonego,Andrey Rublev,0.385,0.615,0.135,0.635,0.5,WIDE,low,0.1165,3.35,1.23,,,Elo -200 | form +0.10
+2026-04-16,WTA Stuttgart Open,hard,Elena Rybakina,Diana Shnaider,0.6351,0.3649,0.3851,0.8851,0.5,WIDE,low,-0.1389,1.08,3.7,,,Elo ++144 | form -0.12
+2026-04-16,ATP Barcelona Open,clay,Arthur Fils,Brandon Nakashima,0.5927,0.4073,0.3427,0.8427,0.5,WIDE,low,-0.1112,1.06,2.52,,,Elo ++137 | form +0.18 | hold -0.06
