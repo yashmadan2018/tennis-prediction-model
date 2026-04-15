@@ -1,0 +1,147 @@
+name: Quarterly Retrain
+
+on:
+  schedule:
+    # 6am UTC on 1 Jan, 1 Apr, 1 Jul, 1 Oct
+    - cron: "0 6 1 1,4,7,10 *"
+  workflow_dispatch:
+    inputs:
+      skip_download:
+        description: "Skip Sackmann data download (use cached data/raw/)"
+        type: boolean
+        default: false
+      dry_run:
+        description: "Dry run — print plan, do not train or commit"
+        type: boolean
+        default: false
+
+jobs:
+  retrain:
+    name: Retrain model
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    permissions:
+      contents: write   # needed to push the updated model files
+
+    steps:
+      # ── 1. Checkout ────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # ── 2. Python setup ────────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # ── 3. Install dependencies ────────────────────────────────────────────
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # ── 4. Run retrain orchestrator ────────────────────────────────────────
+      - name: Run retrain
+        id: retrain
+        run: |
+          ARGS=""
+          if [ "${{ github.event.inputs.skip_download }}" = "true" ]; then
+            ARGS="$ARGS --skip-download"
+          fi
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+
+          python3 models/retrain.py $ARGS
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+        continue-on-error: true   # we inspect the exit code below
+
+      # ── 5. Read new Brier for commit message ──────────────────────────────
+      - name: Extract Brier score
+        id: metrics
+        if: steps.retrain.outcome == 'success'
+        run: |
+          python3 - <<'EOF'
+          import json, os
+          try:
+              with open("models/saved/feature_list.json") as f:
+                  meta = json.load(f)
+              brier = meta.get("ens_val_brier") or meta.get("val_brier") or "unknown"
+              print(f"brier={brier}")
+              with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+                  fh.write(f"brier={brier}\n")
+          except Exception as e:
+              print(f"brier=unknown (error: {e})")
+          EOF
+
+      # ── 6. Commit if model improved (exit 0) ──────────────────────────────
+      - name: Commit updated model and evaluation report
+        if: >
+          steps.retrain.outcome == 'success' &&
+          github.event.inputs.dry_run != 'true'
+        run: |
+          EXIT="${{ steps.retrain.outputs.exit_code }}"
+          BRIER="${{ steps.metrics.outputs.brier }}"
+
+          if [ "$EXIT" = "0" ]; then
+            git config user.name  "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+
+            # Stage model artefacts and evaluation outputs
+            git add models/saved/xgb_calibrated.pkl \
+                    models/saved/lr_calibrated.pkl \
+                    models/saved/mlp_calibrated.pkl \
+                    models/saved/feature_list.json \
+                    output/retrain_log.json \
+                    output/evaluation_report.txt \
+                    output/calibration_curve.png \
+                    output/feature_importance.png || true
+
+            # Only commit if something actually changed
+            if git diff --cached --quiet; then
+              echo "[retrain] No file changes to commit."
+            else
+              git commit -m "chore: quarterly retrain — val Brier ${BRIER} [skip ci]"
+              git push
+              echo "[retrain] Model files committed and pushed."
+            fi
+
+          elif [ "$EXIT" = "2" ]; then
+            echo "::warning::New model did not improve on previous Brier. Old model kept."
+            echo "[retrain] Committing retrain log only (no model change)."
+
+            git config user.name  "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add output/retrain_log.json || true
+            if ! git diff --cached --quiet; then
+              git commit -m "chore: quarterly retrain — no improvement, old model kept [skip ci]"
+              git push
+            fi
+          else
+            echo "::error::Retrain failed with exit code $EXIT."
+            exit 1
+          fi
+
+      # ── 7. Summary ────────────────────────────────────────────────────────
+      - name: Write job summary
+        if: always()
+        run: |
+          EXIT="${{ steps.retrain.outputs.exit_code }}"
+          BRIER="${{ steps.metrics.outputs.brier }}"
+          DATE=$(date -u +"%Y-%m-%d %H:%M UTC")
+
+          {
+            echo "## Quarterly Retrain — $DATE"
+            echo ""
+            if   [ "$EXIT" = "0" ]; then
+              echo "✅ **Model improved** — new val Brier: \`$BRIER\`"
+            elif [ "$EXIT" = "2" ]; then
+              echo "⚠️ **No improvement** — old model kept"
+            else
+              echo "❌ **Retrain failed** — check logs"
+            fi
+            echo ""
+            echo "See \`output/retrain_log.json\` for full audit trail."
+          } >> "$GITHUB_STEP_SUMMARY"

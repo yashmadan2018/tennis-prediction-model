@@ -401,25 +401,51 @@ def build_training_dataset(
 
 # ── split helper ──────────────────────────────────────────────────────────────
 
-def prepare_splits(df: pd.DataFrame) -> tuple[
+def prepare_splits(
+    df: pd.DataFrame,
+    rolling: bool = False,
+    rolling_train_years: int = 5,
+) -> tuple[
     pd.DataFrame, pd.Series,
     pd.DataFrame, pd.Series,
     pd.DataFrame, pd.Series,
 ]:
     """
-    Temporal splits:
+    Temporal splits.
+
+    Fixed mode (default):
       train : 2015-01-01 … 2021-12-31
       val   : 2022-01-01 … 2023-12-31
-      test  : 2024-01-01 … (HELD OUT — never used during tuning)
+      test  : 2024-01-01 … (HELD OUT)
+
+    Rolling mode (--rolling flag):
+      Shifts the window each time this runs so the model always trains on
+      the most recent data.  Using current_year C:
+        test  : C           (held out)
+        val   : C-1
+        train : (C - rolling_train_years - 1) … (C-2)   [default 5 years]
 
     Returns (X_train, y_train, X_val, y_val, X_test, y_test).
     """
+    import datetime
     df = df.copy()
     df["date"] = pd.to_datetime(df["date"])
 
-    train_mask = df["date"].dt.year <= 2021
-    val_mask   = (df["date"].dt.year >= 2022) & (df["date"].dt.year <= 2023)
-    test_mask  = df["date"].dt.year >= 2024
+    if rolling:
+        C = datetime.date.today().year
+        test_year  = C
+        val_year   = C - 1
+        train_end  = C - 2
+        train_start = C - 2 - rolling_train_years + 1   # inclusive
+        print(f"[train] Rolling split: train {train_start}–{train_end}  "
+              f"val {val_year}  test {test_year} (held out)")
+        train_mask = (df["date"].dt.year >= train_start) & (df["date"].dt.year <= train_end)
+        val_mask   = df["date"].dt.year == val_year
+        test_mask  = df["date"].dt.year >= test_year
+    else:
+        train_mask = df["date"].dt.year <= 2021
+        val_mask   = (df["date"].dt.year >= 2022) & (df["date"].dt.year <= 2023)
+        test_mask  = df["date"].dt.year >= 2024
 
     # Resolve feature columns actually present
     feat_cols = [c for c in FEATURE_COLS if c in df.columns]
@@ -618,6 +644,7 @@ def main(
     sample_n:  int | None = None,
     no_grid:   bool = False,
     n_workers: int = min(8, mp.cpu_count()),
+    rolling:   bool = False,
 ) -> None:
     sys.path.insert(0, str(ROOT))
     from features.pipeline import PipelineContext
@@ -645,7 +672,7 @@ def main(
     print(f"[train] Using {len(feat_cols)} features, {len(df):,} rows")
 
     # ── 4. Temporal split ──────────────────────────────────────────────────────
-    X_tr, y_tr, X_val, y_val, X_te, y_te = prepare_splits(df)
+    X_tr, y_tr, X_val, y_val, X_te, y_te = prepare_splits(df, rolling=rolling)
 
     if len(X_tr) == 0:
         print("[train] ERROR: empty training set. "
@@ -718,9 +745,11 @@ if __name__ == "__main__":
                         help="Only process N matches (smoke test)")
     parser.add_argument("--no-grid",   action="store_true",
                         help="Skip grid search, use fixed params")
+    parser.add_argument("--rolling",   action="store_true",
+                        help="Use rolling 5-year window split instead of fixed 2015-2024 split")
     parser.add_argument("--workers",   type=int, default=min(8, mp.cpu_count()),
                         help=f"Parallel workers for feature build (default: {min(8, mp.cpu_count())})")
     args = parser.parse_args()
 
     main(rebuild=args.rebuild, sample_n=args.sample, no_grid=args.no_grid,
-         n_workers=args.workers)
+         n_workers=args.workers, rolling=args.rolling)
