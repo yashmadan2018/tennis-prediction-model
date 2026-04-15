@@ -14,7 +14,7 @@ Usage
   from utils.odds_fetcher import OddsClient
   client = OddsClient()                        # reads ODDS_API_KEY from env
   df = client.fetch_tennis_odds()              # all upcoming matches
-  df = client.fetch_tennis_odds(bookmakers=["pinnacle", "betfair_ex_eu"])
+  df = client.fetch_tennis_odds(bookmakers=["pinnacle", "williamhill"])
   client.print_quota()                         # remaining API requests
 
 Output DataFrame columns
@@ -50,8 +50,24 @@ MARKETS    = "h2h"         # head-to-head moneyline only
 ODDS_FMT   = "decimal"
 
 # All bookmakers we'll try in preference order
-PREFERRED_BOOKS = ["pinnacle", "betfair_ex_eu", "betfair_ex_uk", "unibet_eu",
-                   "williamhill", "bet365", "draftkings", "fanduel"]
+# Traditional bookmakers only — exchanges (betfair_ex, matchbook, smarkets) are
+# excluded entirely: their back prices are independently sourced and can be
+# stale/unmatched, producing incoherent two-way markets and inflated edges.
+PREFERRED_BOOKS = [
+    "pinnacle",
+    "williamhill", "bet365", "unibet_eu", "unibet_nl", "unibet_se", "unibet_fr",
+    "draftkings", "fanduel",
+    "betsson", "nordicbet", "coolbet",
+    "marathonbet", "betclic_fr", "codere_it",
+    "winamax_fr", "winamax_de",
+    "sport888", "gtbets", "onexbet",
+    "pmu_fr", "leovegas_se", "tipico_de",
+]
+
+# Book keys whose prices must never be used — exchanges quote each side
+# independently so the two odds do not form a coherent two-way market.
+EXCHANGE_BOOKS = {"betfair_ex_eu", "betfair_ex_uk", "betfair_ex_au",
+                  "matchbook", "smarkets", "betdaq"}
 
 # ── tournament → surface lookup ────────────────────────────────────────────────
 # Keyed on lowercased substrings found in sport_key or sport_title.
@@ -388,38 +404,72 @@ def load_latest_snapshot() -> pd.DataFrame:
 
 def best_bookmaker_row(df: pd.DataFrame) -> pd.DataFrame:
     """
-    For each event_id keep a single row — the best available bookmaker
-    in PREFERRED_BOOKS order (Pinnacle first).  Events not covered by
-    any preferred book are kept with whichever bookmaker was returned.
+    For each event_id keep a single row from the best available traditional
+    bookmaker (PREFERRED_BOOKS order, Pinnacle first).
 
-    Betfair/exchange rows with an implausibly high overround (>108%) are
-    dropped before selection: exchange back prices on each side can be
-    unmatched or stale and don't form a coherent two-way market, inflating
-    the apparent edge.
+    Two filtering passes run before bookmaker selection:
+
+    1. Hard exchange exclusion — any row whose bookmaker key is in
+       EXCHANGE_BOOKS is dropped unconditionally.  Exchange back prices are
+       independently sourced and can be stale or unmatched; they do not form
+       a coherent two-way market and produce inflated edges.
+
+    2. Implied-probability sanity check — after removing the vig, each side's
+       implied probability must be in [0.45, 0.95].  Rows outside that range
+       are dropped (e.g. heavy-favourite odds of 1.04 → implied 96%, or a
+       clearly wrong price).  This catches data-quality issues regardless of
+       the bookmaker source.
     """
     if df.empty:
         return df
 
     df = df.copy()
 
-    # Flag rows whose two-way overround is implausible (>1.08 on an exchange
-    # suggests unmatched quotes rather than a real market).
-    if "odds_a" in df.columns and "odds_b" in df.columns:
-        overround = (1 / df["odds_a"].replace(0, float("nan"))) + \
-                    (1 / df["odds_b"].replace(0, float("nan")))
-        is_exchange = df["bookmaker"].str.contains("betfair_ex|matchbook|smarkets",
-                                                   case=False, na=False)
-        bad_exchange = is_exchange & (overround > 1.08)
-        n_dropped = bad_exchange.sum()
-        if n_dropped:
-            print(f"[odds] Dropped {n_dropped} exchange row(s) with overround >1.08 "
-                  f"(unmatched quotes): "
-                  f"{df.loc[bad_exchange, 'bookmaker'].unique().tolist()}")
-        df = df[~bad_exchange]
+    if "odds_a" not in df.columns or "odds_b" not in df.columns:
+        return df
+
+    # ── 1. Hard exchange exclusion ────────────────────────────────────────────
+    is_exchange = df["bookmaker"].isin(EXCHANGE_BOOKS)
+    n_exc = int(is_exchange.sum())
+    if n_exc:
+        print(f"[odds] Excluded {n_exc} exchange row(s): "
+              f"{df.loc[is_exchange, 'bookmaker'].unique().tolist()}")
+    df = df[~is_exchange]
 
     if df.empty:
         return df
 
+    # ── 2. Implied-probability sanity check ───────────────────────────────────
+    _o_a = pd.to_numeric(df["odds_a"], errors="coerce").replace(0, float("nan"))
+    _o_b = pd.to_numeric(df["odds_b"], errors="coerce").replace(0, float("nan"))
+    overround  = (1 / _o_a) + (1 / _o_b)
+    implied_a  = (1 / _o_a) / overround
+    implied_b  = (1 / _o_b) / overround
+
+    # Tennis-appropriate bounds: a vig-free implied below 5% (decimal > ~20)
+    # or above 95% (decimal < ~1.05) indicates bad data or a match so lopsided
+    # that the edge calculation is unreliable.  0.45 would be too tight — a
+    # legitimate heavy favourite like Zverev vs Diallo has implied ~11%.
+    _LO, _HI = 0.05, 0.95
+    bad_prices = (
+        _o_a.isna() | _o_b.isna() |
+        (implied_a < _LO) | (implied_a > _HI) |
+        (implied_b < _LO) | (implied_b > _HI)
+    )
+    n_bad = int(bad_prices.sum())
+    if n_bad:
+        bad_books = df.loc[bad_prices, "bookmaker"].unique().tolist()
+        bad_sample = df.loc[bad_prices, ["bookmaker", "player_a", "player_b",
+                                         "odds_a", "odds_b"]].head(5)
+        print(f"[odds] Dropped {n_bad} row(s) with implied prob outside "
+              f"[{_LO},{_HI}] — bookmakers: {bad_books}")
+        print(bad_sample.to_string(index=False))
+    df = df[~bad_prices]
+
+    if df.empty:
+        return df
+
+    # ── 3. Select best bookmaker per event ────────────────────────────────────
     book_rank = {b: i for i, b in enumerate(PREFERRED_BOOKS)}
     df["_brank"] = df["bookmaker"].map(book_rank).fillna(len(PREFERRED_BOOKS))
     df = (
