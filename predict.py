@@ -410,7 +410,21 @@ def _log_predictions(df: pd.DataFrame) -> None:
     ]
     out = df[[c for c in cols if c in df.columns]].copy()
     if PREDICTIONS_CSV.exists():
-        out.to_csv(PREDICTIONS_CSV, mode="a", header=False, index=False)
+        # If existing file header doesn't match current schema, overwrite rather than append
+        try:
+            existing_cols = pd.read_csv(PREDICTIONS_CSV, nrows=0).columns.tolist()
+        except Exception:
+            existing_cols = []
+        if existing_cols != list(out.columns):
+            # Schema mismatch — rewrite with correct header (preserving old rows if readable)
+            try:
+                old = pd.read_csv(PREDICTIONS_CSV, header=None, skiprows=1,
+                                  names=out.columns, on_bad_lines="skip")
+                pd.concat([old, out], ignore_index=True).to_csv(PREDICTIONS_CSV, index=False)
+            except Exception:
+                out.to_csv(PREDICTIONS_CSV, index=False)
+        else:
+            out.to_csv(PREDICTIONS_CSV, mode="a", header=False, index=False)
     else:
         out.to_csv(PREDICTIONS_CSV, index=False)
     print(f"[predict] Logged {len(out)} predictions → {PREDICTIONS_CSV}")

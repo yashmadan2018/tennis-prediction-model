@@ -1,4 +1,4 @@
-match_id,date,tournament,surface,player_a,player_b,prob_a,prob_b,key_drivers,confidence,model_edge,closing_odds_a,closing_odds_b
+date,tournament,surface,player_a,player_b,prob_a,prob_b,prob_low,prob_high,confidence_width,confidence_tier,confidence,model_edge,opening_odds_a,opening_odds_b,closing_odds_a,closing_odds_b,key_drivers
 2026-04-16,ATP Munich,clay,Botic Van De Zandschulp,Francisco Cerundolo,0.4017,0.5983,0.1889,0.6145,0.4256,WIDE,low,0.1084,3.3,1.37,,,Elo -144
 2026-04-16,ATP Munich,clay,Alexander Zverev,Gabriel Diallo,0.8409,0.1591,0.5909,1.0,0.4091,WIDE,high,-0.0503,1.09,8.93,,,Elo ++468 | form +0.16 | hold +0.15
 2026-04-16,ATP Munich,clay,Daniel Altmaier,Alex Molcan,0.6742,0.3258,0.4242,0.9242,0.5,WIDE,medium,0.1548,1.86,2.01,,,Elo ++84 | form +0.17 | hold +0.13
