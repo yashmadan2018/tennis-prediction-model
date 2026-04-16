@@ -27,6 +27,8 @@ ROOT = Path(__file__).parent.parent
 
 PUSHOVER_API_URL = "https://api.pushover.net/1/messages.json"
 
+_SPORT_EMOJI = {"tennis": "🎾", "nba": "🏀", "soccer": "⚽"}
+
 
 # ── credentials ───────────────────────────────────────────────────────────────
 
@@ -173,11 +175,15 @@ def send_alert(
     try:
         import requests
 
+        cat   = str(match.get("sport_category", "tennis"))
+        emoji = _SPORT_EMOJI.get(cat, "🏟")
+        title = f"{emoji} Insider Trading - Sports"
+
         resp = requests.post(PUSHOVER_API_URL, data={
             "token":   creds.api_token,
             "user":    creds.user_key,
             "message": body,
-            "title":   "Insider Trading - Sports",
+            "title":   title,
         }, timeout=10)
 
         if resp.status_code == 200:

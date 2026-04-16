@@ -149,12 +149,23 @@ def _write_snapshot(rows: list[dict]) -> None:
 
 # ── odds fetch helpers ────────────────────────────────────────────────────────
 
+_SPORT_EMOJI: dict[str, str] = {
+    "tennis": "🎾",
+    "nba":    "🏀",
+    "soccer": "⚽",
+}
+
+
+def _emoji(sport_category: str) -> str:
+    return _SPORT_EMOJI.get(sport_category, "🏟")
+
+
 def _fetch_all_odds(client: Any) -> pd.DataFrame:
     """
-    Fetch fresh odds for all active tennis sport keys.
-    Returns a DataFrame in the same format as OddsClient.fetch_tennis_odds().
+    Fetch fresh odds for all configured sports (tennis + NBA + soccer).
+    Returns a combined DataFrame with a sport_category column.
     """
-    return client.fetch_tennis_odds(save=False)
+    return client.fetch_all_odds(save=False)
 
 
 def _extract_commence(odds_df: pd.DataFrame, event_id: str) -> datetime | None:
@@ -227,10 +238,11 @@ def _poll_game(
     old_bucket = entry.get("bucket", "")
 
     if new_bucket != old_bucket:
+        cat = entry.get("sport_category", "tennis")
         if new_bucket != "started":
             interval = BUCKET_INTERVALS.get(new_bucket, "?")
             print(
-                f"[poll] {player_a} vs {player_b}: "
+                f"[poll] {_emoji(cat)} {player_a} vs {player_b}: "
                 f"[{old_bucket}] → [{new_bucket}]  "
                 f"(interval now {interval}s)"
             )
@@ -301,23 +313,25 @@ def _seed_tracker(
         if bkt == "started":
             continue
 
+        cat = str(row.get("sport_category", "tennis"))
         tracker[eid] = {
-            "event_id":    eid,
-            "player_a":    row.get("player_a", "?"),
-            "player_b":    row.get("player_b", "?"),
-            "tournament":  row.get("tournament", ""),
-            "surface":     row.get("surface", ""),
-            "tour":        row.get("tour", ""),
-            "commence_time": ct,
-            "odds_a":      row.get("odds_a"),
-            "odds_b":      row.get("odds_b"),
-            "bookmaker":   row.get("bookmaker", ""),
-            "bucket":      bkt,
-            "last_poll":   None,
-            "next_poll":   _now_utc(),   # poll immediately on first cycle
+            "event_id":       eid,
+            "sport_category": cat,
+            "player_a":       row.get("player_a", "?"),
+            "player_b":       row.get("player_b", "?"),
+            "tournament":     row.get("tournament", ""),
+            "surface":        row.get("surface", ""),
+            "tour":           row.get("tour", ""),
+            "commence_time":  ct,
+            "odds_a":         row.get("odds_a"),
+            "odds_b":         row.get("odds_b"),
+            "bookmaker":      row.get("bookmaker", ""),
+            "bucket":         bkt,
+            "last_poll":      None,
+            "next_poll":      _now_utc(),   # poll immediately on first cycle
         }
         print(
-            f"[poll] Added  {row.get('player_a','?')} vs {row.get('player_b','?')} "
+            f"[poll] Added  {_emoji(cat)} {row.get('player_a','?')} vs {row.get('player_b','?')} "
             f"  [{bkt}]  {ct.strftime('%Y-%m-%d %H:%M UTC')}"
         )
         added += 1
@@ -376,9 +390,11 @@ def run_poller(
             ct     = entry["commence_time"]
             ct_str = ct.strftime("%Y-%m-%d %H:%M UTC") if isinstance(ct, datetime) else str(ct)
             label  = _BUCKET_LABELS.get(entry.get("bucket", ""), f"[{entry.get('bucket','')}]")
+            cat    = entry.get("sport_category", "tennis")
+            em     = _emoji(cat)
             print(
-                f"  {entry['player_a']:25s} vs {entry['player_b']:25s}"
-                f"  {label}  {ct_str}"
+                f"  {em} {entry['player_a']:25s} vs {entry['player_b']:25s}"
+                f"  {label}  {ct_str}  ({cat})"
             )
         return
 
@@ -425,10 +441,11 @@ def run_poller(
             # Drop started games immediately
             started = [eid for eid, e in tracker.items() if e.get("bucket") == "started"]
             for eid in started:
-                e = tracker.pop(eid)
+                e   = tracker.pop(eid)
+                cat = e.get("sport_category", "tennis")
                 print(
                     f"🏁 Game started — "
-                    f"{e.get('player_a','?')} vs {e.get('player_b','?')} "
+                    f"{_emoji(cat)} {e.get('player_a','?')} vs {e.get('player_b','?')} "
                     f"removed from tracker"
                 )
 

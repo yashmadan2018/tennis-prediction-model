@@ -69,6 +69,37 @@ PREFERRED_BOOKS = [
 EXCHANGE_BOOKS = {"betfair_ex_eu", "betfair_ex_uk", "betfair_ex_au",
                   "matchbook", "smarkets", "betdaq"}
 
+# ── non-tennis sport keys ──────────────────────────────────────────────────────
+# Tennis keys are discovered dynamically via get_tennis_sport_keys().
+# NBA and soccer keys are known and fetched directly.
+
+KNOWN_SPORT_KEYS: dict[str, list[str]] = {
+    "nba": [
+        "basketball_nba",
+    ],
+    "soccer": [
+        "soccer_epl",
+        "soccer_uefa_champs_league",
+        "soccer_europa_league",
+        "soccer_spain_la_liga",
+        "soccer_germany_bundesliga",
+        "soccer_italy_serie_a",
+        "soccer_france_ligue_one",
+    ],
+}
+
+
+def _sport_category(sport_key: str) -> str:
+    """Return 'tennis' | 'nba' | 'soccer' for a given sport key."""
+    sk = sport_key.lower()
+    if "tennis" in sk:
+        return "tennis"
+    if "basketball_nba" in sk:
+        return "nba"
+    if "soccer" in sk or "football" in sk:
+        return "soccer"
+    return "other"
+
 # ── tournament → surface lookup ────────────────────────────────────────────────
 # Keyed on lowercased substrings found in sport_key or sport_title.
 
@@ -216,6 +247,16 @@ class OddsClient:
         sports = self.get_sports(active_only=True)
         return [s["key"] for s in sports if "tennis" in s["key"].lower()]
 
+    def get_all_sport_keys(self) -> dict[str, list[str]]:
+        """
+        Return sport keys to poll grouped by category.
+        Tennis keys are discovered dynamically; NBA/soccer are from KNOWN_SPORT_KEYS.
+        """
+        return {
+            "tennis": self.get_tennis_sport_keys(),
+            **KNOWN_SPORT_KEYS,
+        }
+
     # ── odds fetch ────────────────────────────────────────────────────────────
 
     def get_odds_for_sport(
@@ -238,8 +279,8 @@ class OddsClient:
         try:
             return self._get(f"sports/{sport_key}/odds", params) or []
         except requests.HTTPError as e:
-            if e.response is not None and e.response.status_code == 422:
-                return []   # sport key exists but no odds right now
+            if e.response is not None and e.response.status_code in (404, 422):
+                return []   # sport key inactive or no odds available right now
             raise
 
     # ── main fetch ────────────────────────────────────────────────────────────
@@ -286,6 +327,59 @@ class OddsClient:
 
         if save:
             ts   = snapshot_time.strftime("%Y%m%d_%H%M%S")
+            raw_path = ODDS_DIR / f"raw_odds_{ts}.json"
+            raw_path.write_text(json.dumps(all_events, indent=2))
+            print(f"[odds] Raw JSON saved → {raw_path}")
+
+        df = _normalize_events(all_events, snapshot_time)
+
+        if save and not df.empty:
+            csv_path = ODDS_DIR / f"odds_snapshot_{ts}.csv"
+            df.to_csv(csv_path, index=False)
+            print(f"[odds] Snapshot saved → {csv_path}  ({len(df):,} rows)")
+
+        if self._remaining is not None:
+            print(f"[odds] API quota remaining: {self._remaining} requests")
+
+        return df
+
+    def fetch_all_odds(
+        self,
+        bookmakers: list[str] | None = None,
+        save: bool = False,
+    ) -> pd.DataFrame:
+        """
+        Fetch upcoming odds for all configured sports:
+          - Tennis (dynamic key discovery)
+          - NBA (basketball_nba)
+          - Soccer (EPL, UCL, Europa, La Liga, Bundesliga, Serie A, Ligue 1)
+
+        Returns a combined DataFrame with a sport_category column.
+        404/422 responses for inactive sport keys are silently skipped.
+        """
+        all_keys  = self.get_all_sport_keys()
+        all_events: list[dict] = []
+        found: list[str] = []
+
+        for category, keys in all_keys.items():
+            for sk in keys:
+                events = self.get_odds_for_sport(sk, bookmakers=bookmakers)
+                if events:
+                    all_events.extend(events)
+                    found.append(sk)
+                time.sleep(0.2)
+
+        if found:
+            print(f"[odds] Active sport keys ({len(found)}): {found}")
+
+        if not all_events:
+            print("[odds] No upcoming events with odds found across all sports.")
+            return pd.DataFrame()
+
+        snapshot_time = datetime.now(timezone.utc)
+
+        if save:
+            ts       = snapshot_time.strftime("%Y%m%d_%H%M%S")
             raw_path = ODDS_DIR / f"raw_odds_{ts}.json"
             raw_path.write_text(json.dumps(all_events, indent=2))
             print(f"[odds] Raw JSON saved → {raw_path}")
@@ -362,20 +456,21 @@ def _normalize_events(events: list[dict], snapshot_time: datetime) -> pd.DataFra
                 continue
 
             rows.append({
-                "event_id":      event_id,
-                "sport_key":     sport_key,
-                "tournament":    sport_title,
-                "surface":       surface,
-                "tour":          tour,
-                "best_of":       _best_of(sport_key, tour),
-                "tourney_level": _tourney_level(sport_key, tour),
-                "commence_time": commence,
-                "player_a":      player_a,
-                "player_b":      player_b,
-                "odds_a":        float(odds_a),
-                "odds_b":        float(odds_b),
-                "bookmaker":     bm_key,
-                "snapshot_time": snapshot_time.isoformat(),
+                "event_id":       event_id,
+                "sport_key":      sport_key,
+                "sport_category": _sport_category(sport_key),
+                "tournament":     sport_title,
+                "surface":        surface,
+                "tour":           tour,
+                "best_of":        _best_of(sport_key, tour),
+                "tourney_level":  _tourney_level(sport_key, tour),
+                "commence_time":  commence,
+                "player_a":       player_a,
+                "player_b":       player_b,
+                "odds_a":         float(odds_a),
+                "odds_b":         float(odds_b),
+                "bookmaker":      bm_key,
+                "snapshot_time":  snapshot_time.isoformat(),
             })
 
     if not rows:
