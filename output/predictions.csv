@@ -27,3 +27,16 @@ date,tournament,surface,player_a,player_b,prob_a,prob_b,prob_low,prob_high,confi
 2026-04-15,ATP Munich,clay,Alexander Blockx,Ben Shelton,0.3633,0.6367,0.1133,0.6133,0.5,WIDE,low,-0.0806,2.18,1.74,,,Elo -106 | hold -0.09
 2026-04-15,ATP Munich,clay,Flavio Cobolli,Zizou Bergs,0.4848,0.5152,0.2348,0.7348,0.5,WIDE,low,-0.092,1.68,2.29,,,balanced
 2026-04-15,WTA Stuttgart Open,hard,Eva Lys,Elina Svitolina,0.3454,0.6546,0.0954,0.5954,0.5,WIDE,medium,0.139,4.5,1.17,,,Elo -136 | hold -0.14
+2026-04-16,WTA Stuttgart Open,hard,Alycia Parks,Mirra Andreeva,0.2892,0.7108,0.0392,0.5392,0.5,WIDE,medium,0.1832,9.2,1.09,,,Elo -223 | form -0.40 | hold -0.08
+2026-04-16,WTA Stuttgart Open,hard,Leylah Fernandez,Zeynep Sonmez,0.6338,0.3662,0.3838,0.8838,0.5,WIDE,low,0.0304,1.61,2.45,,,Elo ++115 | form -0.14 | hold +0.07
+2026-04-16,ATP Munich,clay,Daniel Altmaier,Alex Molcan,0.6742,0.3258,0.4242,0.9242,0.5,WIDE,medium,0.1147,1.74,2.21,,,Elo ++84 | form +0.17 | hold +0.13
+2026-04-16,WTA Stuttgart Open,hard,Elena Rybakina,Diana Shnaider,0.6351,0.3649,0.3851,0.8851,0.5,WIDE,low,-0.1366,1.26,4.26,,,Elo ++144 | form -0.12
+2026-04-16,ATP Barcelona Open,clay,Corentin Moutet,Lorenzo Musetti,0.3759,0.6241,0.1259,0.6259,0.5,WIDE,low,0.1165,3.74,1.31,,,Elo -195
+2026-04-16,ATP Munich,clay,Denis Shapovalov,Fabian Marozsan,0.5123,0.4877,0.2623,0.7623,0.5,WIDE,low,0.0772,2.22,1.71,,,form +0.40
+2026-04-16,ATP Barcelona Open,clay,Arthur Fils,Brandon Nakashima,0.5927,0.4073,0.3427,0.8427,0.5,WIDE,low,-0.1283,1.35,3.49,,,Elo ++137 | form +0.18 | hold -0.06
+2026-04-16,WTA Stuttgart Open,hard,Liudmila Samsonova,Coco Gauff,0.1625,0.8375,0.0,0.4125,0.4125,WIDE,high,-0.0216,5.32,1.2,,,Elo -263 | form -0.33
+2026-04-16,WTA Stuttgart Open,hard,Karolina Muchova,Elise Mertens,0.889,0.111,0.639,1.0,0.361,WIDE,high,0.2616,1.55,2.61,,,Elo ++258 | form +0.34 | hold +0.12
+2026-04-16,ATP Barcelona Open,clay,Lorenzo Sonego,Andrey Rublev,0.385,0.615,0.135,0.635,0.5,WIDE,low,0.1543,4.2,1.26,,,Elo -200 | form +0.10
+2026-04-16,ATP Munich,clay,Botic Van De Zandschulp,Francisco Cerundolo,0.4017,0.5983,0.189,0.6145,0.4255,WIDE,low,0.126,3.52,1.34,,,Elo -144
+2026-04-16,WTA Stuttgart Open,hard,Ekaterina Alexandrova,Linda Noskova,0.4428,0.5572,0.1928,0.6928,0.5,WIDE,low,0.0099,2.24,1.71,,,Elo -48
+2026-04-16,ATP Munich,clay,Alexander Zverev,Gabriel Diallo,0.8409,0.1591,0.5909,1.0,0.4091,WIDE,high,-0.0547,1.09,9.35,,,Elo ++468 | form +0.16 | hold +0.15
