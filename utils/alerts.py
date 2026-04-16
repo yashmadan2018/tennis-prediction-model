@@ -171,26 +171,21 @@ def send_alert(
         return False
 
     try:
-        import urllib.request
-        import urllib.parse
+        import requests
 
-        data = urllib.parse.urlencode({
+        resp = requests.post(PUSHOVER_API_URL, data={
             "token":   creds.api_token,
             "user":    creds.user_key,
             "message": body,
-            "title":   "Tennis Edge Alert",
-        }).encode()
+            "title":   "Insider Trading - Sports",
+        }, timeout=10)
 
-        req = urllib.request.Request(PUSHOVER_API_URL, data=data, method="POST")
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            status = resp.getcode()
-
-        if status == 200:
+        if resp.status_code == 200:
             print(f"[alerts] Pushover sent  "
                   f"{match.get('player_a','?')} vs {match.get('player_b','?')}")
             return True
         else:
-            print(f"[alerts] ERROR: Pushover returned HTTP {status}")
+            print(f"[alerts] ERROR: Pushover returned HTTP {resp.status_code}: {resp.text}")
             return False
 
     except Exception as exc:
