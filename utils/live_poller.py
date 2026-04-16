@@ -11,9 +11,8 @@ Polling buckets
 ───────────────
   >12hr      → every 60 min
   1hr–12hr   → every 15 min
-  <1hr       → every  2 min  (also used once game has started)
-  active     → every  2 min  (past commence_time, within +3hr grace window)
-  expired    → skipped        (commence_time + 3hr has passed)
+  <1hr       → every  5 min
+  started    → dropped immediately; logged as 🏁 Game started
 
 Time-update detection
 ─────────────────────
@@ -62,12 +61,10 @@ SNAPSHOTS_PATH = OUTPUT_DIR / "line_snapshots.csv"
 BUCKET_INTERVALS: dict[str, int] = {
     ">12hr":    3600,   # 60 min
     "1hr-12hr":  900,   # 15 min
-    "<1hr":      120,   #  2 min
-    "active":    120,   #  2 min (game in progress / grace window)
+    "<1hr":      300,   #  5 min
 }
 
-GRACE_HOURS = 3          # keep polling this many hours after commence_time
-LOOP_SLEEP  = 30         # main loop heartbeat (seconds)
+LOOP_SLEEP = 30          # main loop heartbeat (seconds)
 
 # ── snapshot CSV columns ──────────────────────────────────────────────────────
 SNAPSHOT_COLS = [
@@ -88,7 +85,7 @@ def _now_utc() -> datetime:
 def _bucket(commence: datetime) -> str:
     """
     Classify a game into a polling bucket based on its commence_time.
-    Returns 'expired' if the game is past the grace window.
+    Returns 'started' once commence_time has passed — game is dropped immediately.
     """
     now  = _now_utc()
     diff = (commence - now).total_seconds()
@@ -99,11 +96,7 @@ def _bucket(commence: datetime) -> str:
         return "1hr-12hr"
     if diff > 0:
         return "<1hr"
-    # Past commence_time
-    elapsed = (now - commence).total_seconds()
-    if elapsed < GRACE_HOURS * 3600:
-        return "active"
-    return "expired"
+    return "started"
 
 
 def _next_poll_time(bucket: str, last_poll: datetime | None = None) -> datetime:
@@ -234,16 +227,17 @@ def _poll_game(
     old_bucket = entry.get("bucket", "")
 
     if new_bucket != old_bucket:
-        if new_bucket != "expired":
+        if new_bucket != "started":
+            interval = BUCKET_INTERVALS.get(new_bucket, "?")
             print(
                 f"[poll] {player_a} vs {player_b}: "
-                f"bucket {old_bucket} → {new_bucket} "
-                f"(interval now {BUCKET_INTERVALS.get(new_bucket, '?')}s)"
+                f"[{old_bucket}] → [{new_bucket}]  "
+                f"(interval now {interval}s)"
             )
         entry["bucket"] = new_bucket
 
-    # ── 3. Skip expired games ─────────────────────────────────────────────────
-    if new_bucket == "expired":
+    # ── 3. Drop games that have started ──────────────────────────────────────
+    if new_bucket == "started":
         return None
 
     # ── 4. Pull best odds row ─────────────────────────────────────────────────
@@ -304,7 +298,7 @@ def _seed_tracker(
         ct = pd.Timestamp(ct_raw).tz_convert("UTC").to_pydatetime()
 
         bkt = _bucket(ct)
-        if bkt == "expired":
+        if bkt == "started":
             continue
 
         tracker[eid] = {
@@ -353,7 +347,7 @@ def run_poller(
     client  = OddsClient(api_key=api_key)
     tracker = _load_tracker()
 
-    print(f"[poll] Starting live poller  (grace={GRACE_HOURS}hr, loop={LOOP_SLEEP}s)")
+    print(f"[poll] Starting live poller  (buckets: >12hr→60min / 1hr-12hr→15min / <1hr→5min / started→dropped, loop={LOOP_SLEEP}s)")
     print(f"[poll] Snapshots → {SNAPSHOTS_PATH}")
     print(f"[poll] Tracker   → {TRACKER_PATH}")
     print()
@@ -371,14 +365,20 @@ def run_poller(
 
     if dry_run:
         print()
-        active = {k: v for k, v in tracker.items() if v.get("bucket") != "expired"}
+        active = {k: v for k, v in tracker.items() if v.get("bucket") != "started"}
         print(f"[poll] DRY-RUN — {len(active)} game(s) would be tracked:\n")
+        _BUCKET_LABELS = {
+            ">12hr":    "[60min]",
+            "1hr-12hr": "[15min]",
+            "<1hr":     "[5min] ",
+        }
         for entry in active.values():
-            ct  = entry["commence_time"]
+            ct     = entry["commence_time"]
             ct_str = ct.strftime("%Y-%m-%d %H:%M UTC") if isinstance(ct, datetime) else str(ct)
+            label  = _BUCKET_LABELS.get(entry.get("bucket", ""), f"[{entry.get('bucket','')}]")
             print(
                 f"  {entry['player_a']:25s} vs {entry['player_b']:25s}"
-                f"  [{entry['bucket']:10s}]  {ct_str}"
+                f"  {label}  {ct_str}"
             )
         return
 
@@ -394,7 +394,7 @@ def run_poller(
         # Determine which games are due for a poll this cycle
         due = [
             eid for eid, entry in tracker.items()
-            if entry.get("bucket") != "expired"
+            if entry.get("bucket") != "started"
             and (entry.get("next_poll") or now) <= now
         ]
 
@@ -422,11 +422,15 @@ def run_poller(
             _write_snapshot(snapshots)
             _save_tracker(tracker)
 
-            # Prune expired games from memory
-            expired = [eid for eid, e in tracker.items() if e.get("bucket") == "expired"]
-            for eid in expired:
+            # Drop started games immediately
+            started = [eid for eid, e in tracker.items() if e.get("bucket") == "started"]
+            for eid in started:
                 e = tracker.pop(eid)
-                print(f"[poll] Expired: {e.get('player_a','?')} vs {e.get('player_b','?')}")
+                print(
+                    f"🏁 Game started — "
+                    f"{e.get('player_a','?')} vs {e.get('player_b','?')} "
+                    f"removed from tracker"
+                )
 
         time.sleep(LOOP_SLEEP)
 
