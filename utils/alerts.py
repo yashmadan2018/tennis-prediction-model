@@ -1,7 +1,7 @@
 """
 utils/alerts.py
 ───────────────
-Twilio SMS alert sender for edge predictions.
+Pushover push-notification alert sender for edge predictions.
 
 Reads credentials from (in priority order):
   1. st.secrets  (Streamlit Cloud)
@@ -25,19 +25,18 @@ from typing import Optional
 
 ROOT = Path(__file__).parent.parent
 
+PUSHOVER_API_URL = "https://api.pushover.net/1/messages.json"
+
 
 # ── credentials ───────────────────────────────────────────────────────────────
 
 @dataclass
 class AlertCredentials:
-    account_sid:  str
-    auth_token:   str
-    from_number:  str   # Twilio number, e.g. "+15005550006"
-    to_number:    str   # Your mobile number, e.g. "+14155550123"
+    user_key:  str
+    api_token: str
 
     def valid(self) -> bool:
-        return all([self.account_sid, self.auth_token,
-                    self.from_number, self.to_number])
+        return bool(self.user_key and self.api_token)
 
 
 def _load_dotenv() -> dict[str, str]:
@@ -59,7 +58,7 @@ def _load_dotenv() -> dict[str, str]:
 
 def load_credentials() -> AlertCredentials:
     """
-    Load Twilio credentials. Priority:
+    Load Pushover credentials. Priority:
       1. st.secrets (Streamlit Cloud runtime)
       2. Environment variables
       3. .env file
@@ -69,26 +68,21 @@ def load_credentials() -> AlertCredentials:
         import streamlit as st
         secrets = st.secrets
         return AlertCredentials(
-            account_sid = secrets.get("TWILIO_ACCOUNT_SID",  ""),
-            auth_token  = secrets.get("TWILIO_AUTH_TOKEN",   ""),
-            from_number = secrets.get("TWILIO_FROM_NUMBER",  ""),
-            to_number   = secrets.get("TWILIO_TO_NUMBER",    ""),
+            user_key  = secrets.get("PUSHOVER_USER_KEY",  ""),
+            api_token = secrets.get("PUSHOVER_API_TOKEN", ""),
         )
     except Exception:
         pass
 
     # 2 & 3 — env vars (possibly injected from .env below)
     env = _load_dotenv()
-    # Merge dotenv into os.environ without overwriting existing vars
     for k, v in env.items():
         if k not in os.environ:
             os.environ[k] = v
 
     return AlertCredentials(
-        account_sid = os.environ.get("TWILIO_ACCOUNT_SID",  ""),
-        auth_token  = os.environ.get("TWILIO_AUTH_TOKEN",   ""),
-        from_number = os.environ.get("TWILIO_FROM_NUMBER",  ""),
-        to_number   = os.environ.get("TWILIO_TO_NUMBER",    ""),
+        user_key  = os.environ.get("PUSHOVER_USER_KEY",  ""),
+        api_token = os.environ.get("PUSHOVER_API_TOKEN", ""),
     )
 
 
@@ -96,7 +90,7 @@ def load_credentials() -> AlertCredentials:
 
 def format_alert_message(match: dict) -> str:
     """
-    Build the SMS body from a predictions row.
+    Build the notification body from a predictions row.
 
     Expected keys (all optional with sensible fallbacks):
       player_a, player_b, surface, tournament,
@@ -145,7 +139,7 @@ def send_alert(
     dry_run: bool = False,
 ) -> bool:
     """
-    Send (or print, in dry-run mode) an SMS alert for one match.
+    Send (or print, in dry-run mode) a Pushover notification for one match.
 
     Parameters
     ----------
@@ -171,28 +165,34 @@ def send_alert(
 
     if not creds.valid():
         print(
-            "[alerts] ERROR: Twilio credentials incomplete. "
-            "Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, "
-            "TWILIO_FROM_NUMBER, TWILIO_TO_NUMBER."
+            "[alerts] ERROR: Pushover credentials incomplete. "
+            "Set PUSHOVER_USER_KEY and PUSHOVER_API_TOKEN."
         )
         return False
 
     try:
-        from twilio.rest import Client          # type: ignore[import]
-    except ImportError:
-        print("[alerts] ERROR: twilio package not installed. Run: pip install twilio")
-        return False
+        import urllib.request
+        import urllib.parse
 
-    try:
-        client = Client(creds.account_sid, creds.auth_token)
-        message = client.messages.create(
-            body = body,
-            from_ = creds.from_number,
-            to    = creds.to_number,
-        )
-        print(f"[alerts] SMS sent  SID={message.sid}  "
-              f"{match.get('player_a','?')} vs {match.get('player_b','?')}")
-        return True
+        data = urllib.parse.urlencode({
+            "token":   creds.api_token,
+            "user":    creds.user_key,
+            "message": body,
+            "title":   "Tennis Edge Alert",
+        }).encode()
+
+        req = urllib.request.Request(PUSHOVER_API_URL, data=data, method="POST")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            status = resp.getcode()
+
+        if status == 200:
+            print(f"[alerts] Pushover sent  "
+                  f"{match.get('player_a','?')} vs {match.get('player_b','?')}")
+            return True
+        else:
+            print(f"[alerts] ERROR: Pushover returned HTTP {status}")
+            return False
+
     except Exception as exc:
-        print(f"[alerts] ERROR sending SMS: {exc}")
+        print(f"[alerts] ERROR sending Pushover notification: {exc}")
         return False
